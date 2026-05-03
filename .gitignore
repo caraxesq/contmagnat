@@ -1,0 +1,14 @@
+.env
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+bot.out.log
+bot.err.log
+*.log
+
+data/training/generation_logs.jsonl
+data/training/**/posts.jsonl
+
+skills/
