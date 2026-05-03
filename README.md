@@ -1,15 +1,16 @@
 # Contmagnat
 
-Telegram RAG post generator MVP.
+Telegram bot for generating posts from topic-based and channel-profile style examples.
 
 ## Stack
 
-- FastAPI
+- Python 3.11
 - aiogram v3
-- PostgreSQL + pgvector
-- OpenRouter integration points for future embeddings and generation
+- FastAPI API endpoints
+- Local file storage in `data/training`
+- Anthropic-compatible generation through gngn/Ethereal
 
-## Setup
+## Local Setup
 
 ```powershell
 py -3.11 -m venv .venv
@@ -18,25 +19,21 @@ pip install -r requirements-dev.txt
 copy .env.example .env
 ```
 
-Put the Telegram token only into `.env`:
+Fill `.env` locally. Do not commit it.
 
 ```env
-TELEGRAM_BOT_TOKEN=your-token
-STORAGE_BACKEND=memory
-ALLOWED_TELEGRAM_USER_IDS=
+TELEGRAM_BOT_TOKEN=your-telegram-token
+ADMIN_PASSWORD=your-admin-password
+STORAGE_BACKEND=file
+TRAINING_DATA_DIR=data/training
+
+TEXT_GENERATION_PROVIDER=anthropic
+ANTHROPIC_BASE_URL=https://api.gngn.my
+ANTHROPIC_AUTH_TOKEN=your-gngn-key
+ANTHROPIC_MODEL=claude-opus-4-7
 ```
 
-If a bot token was posted in chat or committed anywhere, rotate it in BotFather.
-
-`STORAGE_BACKEND=memory` is the default local mode. It runs without PostgreSQL and keeps data only while the process is alive.
-
-## Run Without Docker
-
-API:
-
-```powershell
-python -m app.main
-```
+## Run
 
 Bot:
 
@@ -44,62 +41,73 @@ Bot:
 python -m app.bot.main
 ```
 
-You can also run the API directly:
+API:
 
 ```powershell
-uvicorn app.api.main:app --reload
+python -m app.main
 ```
 
-## Local API Test
+Tests:
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/health"
-Invoke-RestMethod `
-  -Uri "http://127.0.0.1:8000/generation" `
-  -Method Post `
-  -ContentType "application/json; charset=utf-8" `
-  -Body '{"topic":"кулинария","user_request":"пост про быстрый ужин"}'
+python -m pytest -q
 ```
 
-Expected response contains:
-
-```json
-{
-  "status": "ok",
-  "generated_text": "Сгенерированный тестовый пост..."
-}
-```
-
-## MVP Flow
+## Bot Flow
 
 - `/start` opens the main menu.
-- `/generate пост про завтрак` runs a minimal e2e generation scenario.
-- `Загрузить посты` asks for one of the topics: кулинария, отношения, здоровье, красота, дом, кастом.
-- `Кастом` asks for a custom topic name.
-- Posts are split by blank lines and saved to the configured storage backend.
-- `Сгенерировать пост` collects topic and request, logs the request, and returns generated text.
-- If OpenRouter env vars are empty, generation uses a local mock response.
+- Admin login uses `ADMIN_PASSWORD`.
+- Admin can add topics, create channel profiles, and save forwarded posts.
+- Training posts are stored locally:
+  - `data/training/topics/<topic>/posts.jsonl`
+  - `data/training/profiles/<profile>/posts.jsonl`
+- User generation can use either a topic or an individual channel profile.
 
-## OpenRouter and pgvector
+## VPS Deploy With systemd
 
-- `app/clients/openrouter.py` is the only OpenRouter HTTP client.
-- `app/services/embeddings.py` will call OpenRouter embeddings.
-- `app/services/generation.py` calls a text generator; `app/services/text_generation.py` chooses OpenRouter when configured, otherwise mock.
-- `posts.embedding` is a pgvector column.
-- `PostsRepository.find_similar` performs pgvector cosine similarity search.
+Install dependencies:
 
-## PostgreSQL Mode
-
-PostgreSQL is optional for local e2e testing. To enable it later:
-
-```env
-STORAGE_BACKEND=postgres
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/contmagnat
+```bash
+sudo apt update
+sudo apt install -y git python3.11 python3.11-venv
 ```
 
-Then run:
+Clone and install:
 
-```powershell
-docker compose up -d postgres
-alembic upgrade head
+```bash
+sudo mkdir -p /opt
+sudo git clone https://github.com/caraxesq/contmagnat.git /opt/contmagnat
+sudo chown -R "$USER:$USER" /opt/contmagnat
+cd /opt/contmagnat
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
+nano .env
+```
+
+Create `/etc/systemd/system/contmagnat-bot.service`:
+
+```ini
+[Unit]
+Description=Contmagnat Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/contmagnat
+EnvironmentFile=/opt/contmagnat/.env
+ExecStart=/opt/contmagnat/.venv/bin/python -m app.bot.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Start it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now contmagnat-bot
+sudo journalctl -u contmagnat-bot -f
 ```
