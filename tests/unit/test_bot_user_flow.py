@@ -197,3 +197,50 @@ async def test_generation_passes_profile_scope_to_generator(monkeypatch) -> None
     await generate_post(FakeMessage("Пост"), state)
 
     assert calls[0]["style_scope"] == "profile"
+
+
+@pytest.mark.asyncio
+async def test_generate_text_uses_rag_examples(monkeypatch, tmp_path) -> None:
+    from app.bot.handlers import generate
+    from app.db.file_storage import FilePostsRepository, FileGenerationLogsRepository
+
+    class Bundle:
+        def __init__(self) -> None:
+            self.posts = FilePostsRepository(tmp_path)
+            self.generation_logs = FileGenerationLogsRepository(tmp_path)
+
+        async def commit(self) -> None:
+            return None
+
+    class BundleContext:
+        async def __aenter__(self):
+            return Bundle()
+
+        async def __aexit__(self, *_):
+            return None
+
+    captured: dict[str, object] = {}
+
+    class FakeGenerationService:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        async def generate_post(self, **kwargs: object):
+            captured.update(kwargs)
+            return type("Result", (), {"generated_text": "ok"})()
+
+    repository = FilePostsRepository(tmp_path)
+    await repository.add_post(topic="дом", text="Пост про уютный завтрак дома")
+    monkeypatch.setattr(generate, "training_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(generate, "repository_bundle", lambda: BundleContext())
+    monkeypatch.setattr(generate, "GenerationService", FakeGenerationService)
+
+    result = await generate._generate_text_with_examples(
+        topic="дом",
+        custom_topic=None,
+        user_request="завтрак",
+        style_scope="topic",
+    )
+
+    assert result == "ok"
+    assert captured["style_examples"] == ["Пост про уютный завтрак дома"]

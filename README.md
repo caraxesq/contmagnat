@@ -61,7 +61,11 @@ python -m pytest -q
 - Training posts are stored locally:
   - `data/training/topics/<topic>/posts.jsonl`
   - `data/training/profiles/<profile>/posts.jsonl`
+- Local RAG indexes are rebuilt automatically:
+  - `data/training/topics/<topic>/rag_index.json`
+  - `data/training/profiles/<profile>/rag_index.json`
 - User generation can use either a topic or an individual channel profile.
+- Generation picks similar and fresh examples from the selected topic/profile and sends them to the model as style context.
 
 ## VPS Deploy With systemd
 

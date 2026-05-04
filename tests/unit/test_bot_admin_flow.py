@@ -137,6 +137,7 @@ async def test_admin_upload_saves_posts_for_selected_topic() -> None:
 
     assert "Сохранено постов: 2" in message.answers[0][0]
     assert state.state == AdminFlowStates.waiting_posts
+    assert (admin.posts_repository().base_dir / "topics" / "дом" / "rag_index.json").exists()
 
 
 @pytest.mark.asyncio
@@ -221,4 +222,4 @@ async def test_admin_save_and_train_returns_confirmation_without_real_api() -> N
 
     await save_and_train(message)
 
-    assert "Индексация пропущена" in message.answers[0][0]
+    assert "RAG-индекс обновлен" in message.answers[0][0]

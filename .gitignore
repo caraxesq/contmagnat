@@ -10,5 +10,6 @@ bot.err.log
 
 data/training/generation_logs.jsonl
 data/training/**/posts.jsonl
+data/training/**/rag_index.json
 
 skills/

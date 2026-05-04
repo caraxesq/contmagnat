@@ -20,6 +20,7 @@ from app.core.constants import (
     PROFILE_BUTTON_PREFIX,
 )
 from app.services.generation import GenerationService
+from app.services.rag import RagIndexService
 from app.services.storage import repository_bundle
 from app.services.text_generation import create_text_generator
 from app.services.topic_registry import TopicRegistry
@@ -34,6 +35,10 @@ def training_data_dir() -> str:
 
 def topic_registry() -> TopicRegistry:
     return TopicRegistry(training_data_dir())
+
+
+def rag_index_service() -> RagIndexService:
+    return RagIndexService(training_data_dir())
 
 
 @router.message(Command("generate"))
@@ -256,18 +261,26 @@ async def _generate_text_with_examples(
 ) -> str:
     settings = get_settings()
     async with repository_bundle() as repositories:
-        try:
-            style_posts = await repositories.posts.list_by_topic(
+        rag_service = rag_index_service()
+        style_examples = await rag_service.find_examples(
+            topic=topic,
+            custom_topic=custom_topic,
+            style_scope=style_scope,
+            user_request=user_request,
+            limit=8,
+        )
+        if not style_examples:
+            await rag_service.rebuild_collection(
                 topic=topic,
                 custom_topic=custom_topic,
-                limit=5,
                 style_scope=style_scope,
             )
-        except TypeError:
-            style_posts = await repositories.posts.list_by_topic(
+            style_examples = await rag_service.find_examples(
                 topic=topic,
                 custom_topic=custom_topic,
-                limit=5,
+                style_scope=style_scope,
+                user_request=user_request,
+                limit=8,
             )
         service = GenerationService(
             generation_logs_repository=repositories.generation_logs,
@@ -277,7 +290,7 @@ async def _generate_text_with_examples(
             topic=topic,
             custom_topic=custom_topic,
             user_request=user_request,
-            style_examples=[post.text for post in style_posts],
+            style_examples=[example.text for example in style_examples],
         )
         await repositories.commit()
         return result.generated_text

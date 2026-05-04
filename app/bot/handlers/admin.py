@@ -29,6 +29,7 @@ from app.core.constants import (
 )
 from app.db.file_storage import FilePostsRepository
 from app.services.post_ingestion import PostIngestionService
+from app.services.rag import RagIndexService
 from app.services.topic_registry import TopicRegistry
 from app.services.training import TrainingService
 
@@ -52,6 +53,10 @@ def topic_registry() -> TopicRegistry:
 
 def posts_repository() -> FilePostsRepository:
     return FilePostsRepository(training_data_dir())
+
+
+def rag_index_service() -> RagIndexService:
+    return RagIndexService(training_data_dir())
 
 
 @router.message(F.text == MAIN_MENU_ADMIN)
@@ -281,6 +286,11 @@ async def save_admin_posts(message: Message, state: FSMContext) -> None:
         forward_metadata=training_message.forward_metadata,
         style_scope=style_scope,
     )
+    await rag_index_service().rebuild_collection(
+        topic=topic,
+        custom_topic=custom_topic,
+        style_scope=style_scope,
+    )
 
     await message.answer(
         f"Сохранено постов: {result.created_count}. Пропущено: {result.skipped_count}.",
@@ -365,10 +375,26 @@ async def delete_admin_post(callback: CallbackQuery) -> None:
 
 
 @router.message(AdminFlowStates.menu, F.text == ADMIN_MENU_SAVE_AND_TRAIN)
-async def save_and_train(message: Message) -> None:
+async def save_and_train(message: Message, state: FSMContext | None = None) -> None:
     if not await _ensure_admin(message):
         return
-    result = await TrainingService().save_and_train()
+    topic: str | None = None
+    custom_topic: str | None = None
+    style_scope = "topic"
+    if state is not None:
+        data = await state.get_data()
+        if data.get("admin_selected_profile"):
+            topic = str(data["admin_selected_profile"])
+            style_scope = "profile"
+        elif data.get("admin_selected_topic"):
+            topic = str(data["admin_selected_topic"])
+            custom_topic = _optional_str(data.get("admin_custom_topic"))
+
+    result = await TrainingService(rag_index_service()).save_and_train(
+        topic=topic,
+        custom_topic=custom_topic,
+        style_scope=style_scope,
+    )
     logger.info("Training requested", extra={"status": result.status})
     await message.answer(result.message, reply_markup=admin_menu_keyboard())
 
