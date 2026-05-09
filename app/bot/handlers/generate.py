@@ -1,7 +1,9 @@
 import logging
+import re
 from typing import Any
 
 from aiogram import F, Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
@@ -65,7 +67,7 @@ async def generate_from_command(message: Message, state: FSMContext | None = Non
             last_user_request=user_request,
             last_generated_text=generated_text,
         )
-    await message.answer(generated_text, reply_markup=generated_post_keyboard())
+    await message.answer(_format_to_html(generated_text), reply_markup=generated_post_keyboard(), parse_mode=ParseMode.HTML)
 
 
 @router.message(F.text == MAIN_MENU_SELECT_TOPIC)
@@ -158,7 +160,7 @@ async def generate_post(message: Message, state: FSMContext) -> None:
 
     await state.update_data(last_user_request=user_request, last_generated_text=generated_text)
     await state.set_state(None)
-    await message.answer(generated_text, reply_markup=generated_post_keyboard())
+    await message.answer(_format_to_html(generated_text), reply_markup=generated_post_keyboard(), parse_mode=ParseMode.HTML)
 
 
 @router.message(F.text == MAIN_MENU_EDIT)
@@ -184,7 +186,7 @@ async def save_edited_post(message: Message, state: FSMContext) -> None:
 
     await state.update_data(last_generated_text=edited_text)
     await state.set_state(None)
-    await message.answer(edited_text, reply_markup=generated_post_keyboard())
+    await message.answer(_format_to_html(edited_text), reply_markup=generated_post_keyboard(), parse_mode=ParseMode.HTML)
 
 
 @router.message(F.text == MAIN_MENU_REGENERATE)
@@ -207,7 +209,7 @@ async def regenerate_post(message: Message, state: FSMContext) -> None:
     )
     await state.update_data(last_generated_text=generated_text)
     await state.set_state(None)
-    await message.answer(generated_text, reply_markup=generated_post_keyboard())
+    await message.answer(_format_to_html(generated_text), reply_markup=generated_post_keyboard(), parse_mode=ParseMode.HTML)
 
 
 async def _save_topic_from_message(
@@ -313,3 +315,15 @@ def _optional_str(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _format_to_html(text: str) -> str:
+    # Заменяем амперсанды и угловые скобки для HTML
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Конвертируем **жирный**
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text, flags=re.DOTALL)
+    # Конвертируем *курсив* (игнорируя **)
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<i>\1</i>', text, flags=re.DOTALL)
+    # Конвертируем ||спойлер||
+    text = re.sub(r'\|\|(.+?)\|\|', r'<tg-spoiler>\1</tg-spoiler>', text, flags=re.DOTALL)
+    return text
