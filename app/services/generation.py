@@ -190,6 +190,16 @@ class GenerationService:
         try:
             generated_text = await self.text_generator.generate(prompt)
             logger.info("Model raw response: %s", generated_text)
+            
+            # Extract only the final post if the model used <post> tags
+            import re
+            match = re.search(r'<post>(.*?)</post>', generated_text, re.DOTALL | re.IGNORECASE)
+            if match:
+                generated_text = match.group(1).strip()
+            else:
+                # Fallback: remove <post> tags if they are malformed
+                generated_text = generated_text.replace('<post>', '').replace('</post>', '').strip()
+                
             # LLMs don't output literal * characters, so apply formatting in code
             generated_text = _apply_formatting(generated_text)
             logger.info("After formatting: %s", generated_text)
